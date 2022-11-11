@@ -2,7 +2,7 @@
 
 yum update -y && yum install wget -y
 
-declare -a arr=("rpm -q aide" "subscription-manager identity")
+declare -a arr=("rpm -q aide")
 
 for (( i = 0; i < ${#arr[@]} ; i++ )); do
     printf "\n**** Running: ${arr[$i]} *****\n\n"
