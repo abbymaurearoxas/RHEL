@@ -1,6 +1,6 @@
 #!/bin/bash
 
-yum update -y && yum install wget -y
+chmod +x instance-test.sh
 
 declare -a arr=("rpm -q aide")
 
