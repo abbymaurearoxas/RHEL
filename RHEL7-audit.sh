@@ -342,7 +342,6 @@ echo "1.6.1.5 Ensure the SELinux mode is enforcing - /etc/selinux/config" >> out
 echo "************************************************************" >> output.txt
 grep -i SELINUX=enforcing /etc/selinux/config >> output.txt  2>&1
 echo $'\n \n' >> output.txt
-
 # 1.6.1.5 Ensure the SELinux mode is enforcing - getenforce
 echo "************************************************************" >> output.txt
 echo "1.6.1.5 Ensure the SELinux mode is enforcing - getenforce" >> output.txt
@@ -2770,5 +2769,362 @@ fi
 echo "1.4.2 Ensure permissions on bootloader config are configured - grub.cfg" >> output.txt
 echo "************************************************************" >> output.txt
 bootloader_config >> output.txt  2>&1
+echo $'\n \n' >> output.txt
+
+selinux_bootloader(){
+
+#!/bin/bash
+# IF check passes return PASSED
+efidir=$(find /boot/efi/EFI/* -type d -not -name 'BOOT')
+gbdir=$(find /boot -maxdepth 1 -type d -name 'grub*')
+if [ -f "$efidir"/grub.cfg ]; then
+grep "^\s*linux" "$efidir"/grub.cfg | grep -Eq "(selinux=0|enforcing=0)" && echo "FAILED: \"$()\" exists" || echo "PASSED"
+elif [ -f "$gbdir"/grub.cfg ]; then
+grep "^\s*linux" "$gbdir"/grub.cfg | grep -Eq "(selinux=0|enforcing=0)" && echo "FAILED: \"$()\" exists" || echo "PASSED" 
+else
+echo "FAILED"
+fi
+}
+
+# 1.6.1.2 Ensure SELinux is not disabled in bootloader configuration
+echo "1.6.1.2 Ensure SELinux is not disabled in bootloader configuration" >> output.txt
+echo "************************************************************" >> output.txt
+selinux_bootloader >> output.txt
+echo $'\n \n' >> output.txt
+
+wirelessint_disabled(){
+#!/bin/bash 
+if command -v nmcli >/dev/null 2>&1 ; then
+if nmcli radio all | grep -Eq '\s*\S+\s+disabled\s+\S+\s+disabled\b'; then
+echo "Wireless is not enabled"
+else nmcli radio all
+fi
+elif [ -n "$(find /sys/class/net/*/ -type d -name wireless)" ]; then
+t=0 mname=$(for driverdir in $(find /sys/class/net/*/ -type d -name wireless | xargs -0 dirname); do
+basename "$(readlink -f "$driverdir"/device/driver/module)";done | sort -u)
+for dm in $mname; do
+if grep -Eq "^\s*install\s+$dm\s+/bin/(true|false)" /etc/modprobe.d/*.conf; then
+/bin/true 
+else echo "$dm is not disabled" 
+t=1 
+fi 
+done 
+[ "$t" -eq 0 ] && echo "Wireless is not enabled" 
+else echo "Wireless is not enabled" 
+fi
+}
+# 3.1.2 Ensure wireless interfaces are disabled
+echo "3.1.2 Ensure wireless interfaces are disabled" >> output.txt
+echo "************************************************************" >> output.txt
+wirelessint_disabled >> output.txt
+echo $'\n \n' >> output.txt
+
+auditdProcess_enabled(){
+#!/bin/bash 
+# IF check passes return PASSED 
+efidir=$(find /boot/efi/EFI/* -type d -not -name 'BOOT')
+gbdir=$(find /boot -maxdepth 1 -type d -name 'grub*')
+if [ -f "$efidir"/grub.cfg ]; then
+grep "^\s*linux" "$efidir"/grub.cfg | grep -Evq "audit=1\b" && echo "FAILED" || echo "PASSED"
+elif [ -f "$gbdir"/grub.cfg ]; then
+grep "^\s*linux" "$gbdir"/grub.cfg | grep -Evq "audit=1\b" && echo "FAILED" || echo "PASSED"
+else 
+echo "FAILED"
+fi
+}
+# 4.1.1.3 Ensure auditing for processes that start prior to auditd is enabled
+echo "4.1.1.3 Ensure auditing for processes that start prior to auditd is enabled" >> output.txt
+echo "************************************************************" >> output.txt
+auditdProcess_enabled >> output.txt
+echo $'\n \n' >> output.txt
+
+
+backlogLimitSufficient(){
+#!/bin/bash 
+# IF check passes return PASSED 
+efidir=$(find /boot/efi/EFI/* -type d -not -name 'BOOT') 
+gbdir=$(find /boot -maxdepth 1 -type d -name 'grub*') 
+if [ -f "$efidir"/grub.cfg ]; then 
+grep "^\s*linux" "$efidir"/grub.cfg | grep -Evq "audit_backlog_limit=\S+\b" && echo -e "\n\nFAILED" || echo -e "\n\nPASSED:\n \"$(grep "audit_backlog_limit=" "$gbdir"/grub.cfg)\"" 
+elif [ -f "$gbdir"/grub.cfg ]; then 
+grep "^\s*linux" "$gbdir"/grub.cfg | grep -Evq "audit_backlog_limit=\S+\b" && echo -e "\n\nFAILED" || echo -e "\n\nPASSED:\n \"$(grep "audit_backlog_limit=" "$gbdir"/grub.cfg)\"" 
+else 
+echo "FAILED" 
+fi
+}
+
+# 4.1.2.4 Ensure audit_backlog_limit is sufficient
+echo "4.1.2.4 Ensure audit_backlog_limit is sufficient" >> output.txt
+echo "************************************************************" >> output.txt
+backlogLimitSufficient >> output.txt
+echo $'\n \n' >> output.txt
+
+shellTOConfigured(){
+ #!/bin/bash 
+ output1="" output2="" 
+ [ -f /etc/bashrc ] && BRC="/etc/bashrc" 
+ for f in "$BRC" /etc/profile /etc/profile.d/*.sh ; do 
+ grep -Pq '^\s*([^#]+\s+)?TMOUT=(900|[1-8][0-9][0-9]|[1-9][0-9]|[1-9])\b' "$f" && grep -Pq '^\s*([^#]+;\s*)?readonly\s+TMOUT(\s+|\s*;|\s*$|=(900|[1-8][0-9][0-9]|[1-9][0-9]|[1-9]))\b' "$f" && grep -Pq '^\s*([^#]+;\s*)?export\s+TMOUT(\s+|\s*;|\s*$|=(900|[1-8][0-9][0-9]|[1-9][0-9]|[1-9]))\b' "$f" && output1="$f" 
+ done 
+ grep -Pq '^\s*([^#]+\s+)?TMOUT=(9[0-9][1-9]|9[1-9][0-9]|0+|[1-9]\d{3,})\b' /etc/profile /etc/profile.d/*.sh "$BRC" && output2=$(grep -Ps '^\s*([^#]+\s+)?TMOUT=(9[0-9][1-9]|9[1-9][0-9]|0+|[1-9]\d{3,})\b' /etc/profile /etc/profile.d/*.sh $BRC) 
+ if [ -n "$output1" ] && [ -z "$output2" ]; then 
+ echo -e "\nPASSED\n\nTMOUT is configured in: \"$output1\"\n" 
+ else [ -z "$output1" ] && echo -e "\nFAILED\n\nTMOUT is not configured\n" [ -n "$output2" ] && echo -e "\nFAILED\n\nTMOUT is incorrectly configured in: \"$output2\"\n" 
+ fi
+}
+
+# 5.5.4 Ensure default user shell timeout is configured
+echo "5.5.4 Ensure default user shell timeout is configured" >> output.txt
+echo "************************************************************" >> output.txt
+shellTOConfigured >> output.txt
+echo $'\n \n' >> output.txt
+
+
+
+userUMask(){
+#!/bin/bash 
+passing="" 
+grep -Eiq '^\s*UMASK\s+(0[0-7][2-7]7|[0-7][2-7]7)\b' /etc/login.defs && grep -Eqi '^\s*USERGROUPS_ENAB\s*"?no"?\b' /etc/login.defs && grep -Eq '^\s*session\s+(optional|requisite|required)\s+pam_umask\.so\b' /etc/pam.d/common-session && passing=true 
+grep -REiq '^\s*UMASK\s+\s*(0[0-7][2-7]7|[0-7][2-7]7|u=(r?|w?|x?)(r?|w?|x?)(r?|w?|x?),g=(r?x?|x?r?),o=)\b' /etc/profile* /etc/bashrc* && passing=true [ "$passing" = true ] && echo "Default user umask is set"   
+}
+
+# 5.5.5 Ensure default user umask is configured - system wide default enforcing permission
+echo "5.5.5 Ensure default user umask is configured - system wide default" >> output.txt
+echo "************************************************************" >> output.txt
+userUMask >> output.txt
+echo $'\n \n' >> output.txt
+
+
+# 5.5.5 Ensure default user umask is configured - system wide umask
+echo "5.5.5 Ensure default user umask is configured - system wide umask" >> output.txt
+echo "************************************************************" >> output.txt
+grep -RPi '(^|^[^#]*)\s*umask\s+([0-7][0-7][01][0-7]\b|[0-7][0-7][0-7][0-6]\b|[0-7][01][0-7]\b|[0-7][0-7][0-6]\b|(u=[rwx]{0,3},)?(g=[rwx]{0,3},)?o=[rwx]+\b|(u=[rwx]{1,3},)?g=[^rx]{1,3}(,o=[rwx]{0,3})?\b)' /etc/login.defs /etc/profile* /etc/bashrc* >> output.txt  2>&1
+echo $'\n \n' >> output.txt
+
+
+rootPath_Integrity(){
+#!/bin/bash RPCV="$(sudo -Hiu root env | grep '^PATH' | cut -d= -f2)" 
+echo "$RPCV" | grep -q "::" && echo "root's path contains a empty directory (::)" 
+echo "$RPCV" | grep -q ":$" && echo "root's path contains a trailing (:)" 
+for x in $(echo "$RPCV" | tr ":" " "); do 
+if [ -d "$x" ]; then 
+ls -ldH "$x" | awk '$9 == "." {print "PATH contains current working directory (.)"} $3 != "root" {print $9, "is not owned by root"} substr($1,6,1) != "-" {print $9, "is group writable"} substr($1,9,1) != "-" {print $9, "is world writable"}'
+else 
+echo "$x is not a directory" 
+fi 
+done
+}
+
+# 6.2.10 Ensure root PATH Integrity
+echo "6.2.10 Ensure root PATH Integrity" >> output.txt
+echo "************************************************************" >> output.txt
+rootPath_Integrity >> output.txt  2>&1
+echo $'\n \n' >> output.txt
+
+
+userHomeDirectories_Exists(){
+#!/bin/bash 
+awk -F: '($1!~/(halt|sync|shutdown|nfsnobody)/ && $7!~/^(\/usr)?\/sbin\/nologin(\/)?$/ && $7!~/(\/usr)?\/bin\/false(\/)?$/) { print $1 " " $6 }' /etc/passwd | while read -r user dir; do 
+if [ ! -d "$dir" ]; then 
+echo "User: \"$user\" home directory: \"$dir\" does not exist." 
+fi 
+done
+}
+
+# 6.2.11 Ensure all users' home directories exist
+echo "6.2.11 Ensure all users' home directories exist" >> output.txt
+echo "************************************************************" >> output.txt
+userHomeDirectories_Exists >> output.txt  2>&1
+echo $'\n \n' >> output.txt
+
+userHomeDirectories_Own(){
+#!/bin/bash 
+awk -F: '($1!~/(halt|sync|shutdown|nfsnobody)/ && $7!~/^(\/usr)?\/sbin\/nologin(\/)?$/ && $7!~/(\/usr)?\/bin\/false(\/)?$/) { print $1 " " $6 }' /etc/passwd | while read -r user dir; do 
+if [ ! -d "$dir" ]; then 
+echo "User: \"$user\" home directory: \"$dir\" does not exist." 
+else owner=$(stat -L -c "%U" "$dir") 
+if [ "$owner" != "$user" ]; then 
+echo "User: \"$user\" home directory: \"$dir\" is owned by \"$owner\"" 
+fi 
+fi 
+done  
+}
+# 6.2.12 Ensure users own their home directories
+echo "6.2.12 Ensure users own their home directories" >> output.txt
+echo "************************************************************" >> output.txt
+userHomeDirectories_Own >> output.txt  2>&1
+echo $'\n \n' >> output.txt
+
+homeDirectories_Perm(){
+#!/bin/bash 
+awk -F: '($1!~/(halt|sync|shutdown|nfsnobody)/ && $7!~/^(\/usr)?\/sbin\/nologin(\/)?$/ && $7!~/(\/usr)?\/bin\/false(\/)?$/) {print $1 " " $6}' /etc/passwd | while read -r user dir; do 
+if [ ! -d "$dir" ]; then
+echo "User: \"$user\" home directory: \"$dir\" doesn't exist" 
+else dirperm=$(stat -L -c "%A" "$dir") 
+if [ "$(echo "$dirperm" | cut -c6)" != "-" ] || [ "$(echo "$dirperm" | cut -c8)" != "-" ] || [ "$(echo "$dirperm" | cut -c9)" != "-" ] || [ "$(echo "$dirperm" | cut -c10)" != "-" ]; then 
+echo "User: \"$user\" home directory: \"$dir\" has permissions: \"$(stat -L -c "%a" "$dir")\"" 
+fi 
+fi 
+done 
+}
+
+# 6.2.13 Ensure users' home directories permissions are 750 or more restrictive
+echo "6.2.13 Ensure users' home directories permissions are 750 or more restrictive" >> output.txt
+echo "************************************************************" >> output.txt
+homeDirectories_Perm >> output.txt  2>&1
+echo $'\n \n' >> output.txt
+
+
+dotFile_GrpWritable(){
+#!/bin/bash 
+awk -F: '($1!~/(halt|sync|shutdown|nfsnobody)/ && $7!~/^(\/usr)?\/sbin\/nologin(\/)?$/ && $7!~/(\/usr)?\/bin\/false(\/)?$/) { print $1 " " $6 }' /etc/passwd | while read -r user dir; do 
+if [ -d "$dir" ]; then 
+for file in "$dir"/.*; do 
+if [ ! -h "$file" ] && [ -f "$file" ]; then 
+fileperm=$(stat -L -c "%A" "$file") 
+if [ "$(echo "$fileperm" | cut -c6)" != "-" ] || [ "$(echo "$fileperm" | cut -c9)" != "-" ]; then 
+echo "User: \"$user\" file: \"$file\" has permissions: \"$fileperm\"" 
+fi 
+fi 
+done 
+fi 
+done
+}
+
+
+# 6.2.14 Ensure users' dot files are not group or world writable
+echo "6.2.14 Ensure users' dot files are not group or world writable" >> output.txt
+echo "************************************************************" >> output.txt
+dotFile_GrpWritable >> output.txt  2>&1
+echo $'\n \n' >> output.txt
+
+forwardFile(){
+#!/bin/bash 
+awk -F: '($1!~/(root|halt|sync|shutdown|nfsnobody)/ && $7!~/^(\/usr)?\/sbin\/nologin(\/)?$/ && $7!~/(\/usr)?\/bin\/false(\/)?$/) { print $1 " " $6 }' /etc/passwd | while read -r user dir; do 
+if [ -d "$dir" ]; then file="$dir/.forward" 
+if [ ! -h "$file" ] && [ -f "$file" ]; then 
+echo "User: \"$user\" file: \"$file\" exists" 
+fi 
+fi 
+done
+}
+# 6.2.15 Ensure no users have .forward files
+echo "6.2.15 Ensure no users have .forward files" >> output.txt
+echo "************************************************************" >> output.txt
+forwardFile >> output.txt  2>&1
+echo $'\n \n' >> output.txt
+
+
+netrcFile(){
+#!/bin/bash 
+awk -F: '($1!~/(halt|sync|shutdown|nfsnobody)/ && $7!~/^(\/usr)?\/sbin\/nologin(\/)?$/ && $7!~/(\/usr)?\/bin\/false(\/)?$/) { print $1 " " $6 }' /etc/passwd | while read -r user dir; do 
+if [ -d "$dir" ]; then 
+file="$dir/.netrc" 
+if [ ! -h "$file" ] && [ -f "$file" ]; then 
+if stat -L -c "%A" "$file" | cut -c4-10 | grep -Eq '[^-]+'; then 
+echo "FAILED: User: \"$user\" file: \"$file\" exists with permissions: \"$(stat -L -c "%a" "$file")\", remove file or excessive permissions" 
+else 
+echo "WARNING: User: \"$user\" file: \"$file\" exists with permissions: \"$(stat -L -c "%a" "$file")\", remove file unless required" 
+fi 
+fi 
+fi done
+}
+
+# 6.2.16 Ensure no users have .netrc files
+echo "6.2.16 Ensure no users have .netrc files" >> output.txt
+echo "************************************************************" >> output.txt
+netrcFile >> output.txt  2>&1
+echo $'\n \n' >> output.txt
+
+rhostsFile(){
+#!/bin/bash
+awk -F: '($1!~/(root|halt|sync|shutdown|nfsnobody)/ && $7!~/^(\/usr)?\/sbin\/nologin(\/)?$/ && $7!~/(\/usr)?\/bin\/false(\/)?$/) { print $1 " " $6 }' /etc/passwd | while read -r user dir; do 
+if [ -d "$dir" ]; then 
+file="$dir/.rhosts" 
+if [ ! -h "$file" ] && [ -f "$file" ]; then 
+echo "User: \"$user\" file: \"$file\" exists" 
+fi 
+fi 
+done
+}
+
+# 6.2.17 Ensure no users have .rhosts files
+echo "6.2.17 Ensure no users have .rhosts files" >> output.txt
+echo "************************************************************" >> output.txt
+rhostsFile >> output.txt  2>&1
+echo $'\n \n' >> output.txt
+
+
+grpPWDExists_InGroup(){
+#!/bin/bash 
+for i in $(cut -s -d: -f4 /etc/passwd | sort -u ); do 
+grep -q -P "^.*?:[^:]*:$i:" /etc/group 
+if [ $? -ne 0 ]; then 
+echo "Group $i is referenced by /etc/passwd but does not exist in /etc/group" 
+fi 
+done
+}
+
+# 6.2.3 Ensure all groups in /etc/passwd exist in /etc/group
+echo "6.2.3 Ensure all groups in /etc/passwd exist in /etc/group" >> output.txt
+echo "************************************************************" >> output.txt
+grpPWDExists_InGroup >> output.txt  2>&1
+echo $'\n \n' >> output.txt
+
+
+noDuplicate_Names(){
+#!/bin/bash 
+cut -d: -f1 /etc/passwd | sort | uniq -d | while read x; do 
+echo "Duplicate login name ${x} in /etc/passwd" 
+done
+}
+
+# 6.2.5 Ensure no duplicate user names exist
+echo "6.2.5 Ensure no duplicate user names exist" >> output.txt
+echo "************************************************************" >> output.txt
+noDuplicate_Names >> output.txt  2>&1
+echo $'\n \n' >> output.txt
+
+noDuplicate_Groups(){
+#!/bin/bash 
+cut -d: -f1 /etc/group | sort | uniq -d | while read -r x; do 
+echo "Duplicate group name ${x} in /etc/group"
+done
+}
+
+
+# 6.2.6 Ensure no duplicate group names exist
+echo "6.2.6 Ensure no duplicate group names exist" >> output.txt
+echo "************************************************************" >> output.txt
+noDuplicate_Groups >> output.txt  2>&1
+echo $'\n \n' >> output.txt
+
+noDuplicate_UID(){
+#!/bin/bash
+DuplicatedUIDs=$(/bin/egrep  -v "^ *($|\#|\+)" /etc/passwd 2>/dev/null | /bin/awk -F: '{print $3}' | /bin/sort -n | /usr/bin/uniq -d | /bin/egrep -v "^ *$"); 
+for DuplicatedUID in $DuplicatedUIDs; do 
+/bin/egrep  -v "^ *($|\#|\+)" /etc/passwd 2>/dev/null | /bin/awk -F: '{print "UID:"$3, "User:"$1}' | /bin/egrep "UID:$DuplicatedUID " ; 
+done
+
+}
+
+# 6.2.7 Ensure no duplicate UIDs exist
+echo "6.2.7 Ensure no duplicate UIDs exist" >> output.txt
+echo "************************************************************" >> output.txt
+noDuplicate_UID >> output.txt  2>&1
+echo $'\n \n' >> output.txt
+
+
+noDuplicate_GID(){
+#!/bin/bash 
+cut -d: -f3 /etc/group | sort | uniq -d | while read -r x; do 
+echo "Duplicate GID ($x) in /etc/group" 
+done
+}
+
+# 6.2.8 Ensure no duplicate GIDs exist
+echo "6.2.8 Ensure no duplicate GIDs exist" >> output.txt
+echo "************************************************************" >> output.txt
+noDuplicate_GID >> output.txt  2>&1
 echo $'\n \n' >> output.txt
 
